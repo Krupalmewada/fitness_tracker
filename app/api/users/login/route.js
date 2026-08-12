@@ -1,5 +1,4 @@
 import bcrypt from 'bcrypt'
-import { error } from "node:console"
 import { query } from "../../../../lib/db"
 
 export async function POST(request) {
