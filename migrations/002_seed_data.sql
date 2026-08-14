@@ -10,7 +10,7 @@ BEGIN;
 -- if anything references these rows, this fails loudly instead of destroying data.
 DELETE FROM exercises;
 DELETE FROM workout_types;
--- MET = Metabolic Equivalent of Task. 1 MET = at rest.
+-- MET = Metabolic Equivalent of Task. 1 MET = at rest
 -- calories ~= MET x bodyweight_kg x hours
 -- Values approximated from the Compendium of Physical Activities.
 INSERT INTO workout_types (name, category, met_value) VALUES
