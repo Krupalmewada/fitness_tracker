@@ -1,0 +1,6 @@
+-- 003_updated_at_trigger.sql
+-- Keeps updated_at honest. DEFAULT now() only fires on INSERT, so without this
+-- the column never changes after a row is created.
+-- One shared plpgsql function, wired to every table that has an updated_at column:
+-- users, user_data, workouts.
+-- Author: Krupal | Created: 2026-08-13
