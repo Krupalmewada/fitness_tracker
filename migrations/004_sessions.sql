@@ -1,5 +1,6 @@
 -- 004_sessions.sql
 -- Keeps session and token data 
+-- token_hash stores a SHA-256 of the token
 -- Author: Krupal | Created: 2026-08-13
 
 BEGIN;
