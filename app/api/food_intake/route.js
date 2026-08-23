@@ -21,7 +21,6 @@ export async function GET(request) {
       [user.id, date]
     )
 
-    // pg returns numeric as strings, so these would concatenate, not add.
     const totals = entries.reduce(
       (acc, e) => ({
         calories: acc.calories + Number(e.calories ?? 0),
@@ -34,6 +33,10 @@ export async function GET(request) {
 
     return Response.json({ entries, totals })
   } catch (error) {
+    // A malformed ?date= is the caller's mistake, not a server fault.
+    if (error.code === '22007' || error.code === '22008') {
+      return Response.json({ error: 'Invalid date.' }, { status: 400 })
+    }
     console.error('Food GET error:', error)
     return Response.json({ error: 'Internal server error.' }, { status: 500 })
   }
@@ -84,6 +87,9 @@ export async function POST(request) {
         { error: 'Invalid food entry. Check meal_type.' },
         { status: 400 }
       )
+    }
+    if (error.code === '22P02' || error.code === '22007' || error.code === '22008') {
+      return Response.json({ error: 'Invalid data format.' }, { status: 400 })
     }
     console.error('Food POST error:', error)
     return Response.json({ error: 'Internal server error.' }, { status: 500 })

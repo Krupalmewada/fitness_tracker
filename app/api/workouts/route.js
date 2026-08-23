@@ -8,28 +8,21 @@ export async function GET(request) {
       return Response.json({ error: 'Not authenticated.' }, { status: 401 })
     }
 
-    // Pagination is fine to take from the client - it can't leak anyone's data.
-    // Clamped so a caller can't ask for a million rows.
-    const limit = Math.min(Number(request.nextUrl.searchParams.get('limit')) || 50, 100)
+    const limit = Math.min(Number(request.nextUrl.searchParams.get('limit')) || 90, 365)
+    const offset = Math.max(Number(request.nextUrl.searchParams.get('offset')) || 0, 0)
 
-    // Join workout_types so the client gets a readable name, not a UUID.
-    // This is why the FK is RESTRICT: deleting a type would orphan these rows.
-    const workouts = await query(
-      `SELECT w.id, w.duration_minutes, w.calories, w.calories_estimated,
-              w.date, w.notes, w.created_at,
-              wt.id AS workout_type_id, wt.name AS workout_type, wt.category
-         FROM workouts w
-         JOIN workout_types wt ON wt.id = w.workout_type_id
-        WHERE w.user_id = $1
-        ORDER BY w.date DESC, w.created_at DESC
-        LIMIT $2`,
-      [user.id, limit]
+    const entries = await query(
+      `SELECT id, weight_kg, body_fat_percent, date, notes, created_at
+         FROM weight_entries
+        WHERE user_id = $1
+        ORDER BY date DESC
+        LIMIT $2 OFFSET $3`,
+      [user.id, limit, offset]
     )
 
-    // A list endpoint returns an array. Your old one returned result[0].
-    return Response.json(workouts)
+    return Response.json(entries)
   } catch (error) {
-    console.error('Workouts GET error:', error)
+    console.error('Weight GET error:', error)
     return Response.json({ error: 'Internal server error.' }, { status: 500 })
   }
 }
@@ -41,66 +34,39 @@ export async function POST(request) {
       return Response.json({ error: 'Not authenticated.' }, { status: 401 })
     }
 
-    const {
-      workout_type_id,
-      duration_minutes = null,
-      calories = null,
-      date,
-      notes = null,
-    } = await request.json()
+    const { weight_kg, body_fat_percent = null, date, notes = null } =
+      await request.json()
 
-    if (!workout_type_id || !date) {
+    if (!weight_kg || !date) {
       return Response.json(
-        { error: 'workout_type_id and date are required.' },
+        { error: 'weight_kg and date are required.' },
         { status: 400 }
       )
     }
 
-    let finalCalories = calories
-    let estimated = false
-
-    // If the user didn't supply calories, estimate from MET.
-    // calories = MET x bodyweight(kg) x hours
-    if (calories === null && duration_minutes) {
-      const [row] = await query(
-        `SELECT wt.met_value,
-                (SELECT weight_kg
-                   FROM weight_entries
-                  WHERE user_id = $1
-                  ORDER BY date DESC
-                  LIMIT 1) AS weight_kg
-           FROM workout_types wt
-          WHERE wt.id = $2`,
-        [user.id, workout_type_id]
-      )
-
-      // numeric comes back from pg as a string - Number() or the maths breaks.
-      if (row?.met_value && row?.weight_kg) {
-        finalCalories = Math.round(
-          Number(row.met_value) * Number(row.weight_kg) * (duration_minutes / 60)
-        )
-        estimated = true
-      }
-    }
-
-    const [workout] = await query(
-      `INSERT INTO workouts
-         (user_id, workout_type_id, duration_minutes, calories, calories_estimated, date, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, workout_type_id, duration_minutes, calories,
-                 calories_estimated, date, notes, created_at`,
-      [user.id, workout_type_id, duration_minutes, finalCalories, estimated, date, notes]
+    const [entry] = await query(
+      `INSERT INTO weight_entries (user_id, weight_kg, body_fat_percent, date, notes)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, weight_kg, body_fat_percent, date, notes, created_at`,
+      [user.id, weight_kg, body_fat_percent, date, notes]
     )
 
-    return Response.json(workout, { status: 201 })
+    return Response.json(entry, { status: 201 })
   } catch (error) {
-    if (error.code === '23503') {
-      return Response.json({ error: 'Unknown workout type.' }, { status: 400 })
+    // weight_entries_one_per_day - the constraint you named yourself.
+    if (error.code === '23505') {
+      return Response.json(
+        { error: 'You already logged a weight for that date.' },
+        { status: 409 }
+      )
     }
     if (error.code === '23514') {
-      return Response.json({ error: 'Invalid workout data.' }, { status: 400 })
+      return Response.json({ error: 'Invalid weight data.' }, { status: 400 })
     }
-    console.error('Workouts POST error:', error)
+    if (error.code === '22P02') {
+      return Response.json({ error: 'Invalid data format.' }, { status: 400 })
+    }
+    console.error('Weight POST error:', error)
     return Response.json({ error: 'Internal server error.' }, { status: 500 })
   }
 }

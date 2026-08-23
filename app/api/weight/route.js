@@ -9,14 +9,15 @@ export async function GET(request) {
     }
 
     const limit = Math.min(Number(request.nextUrl.searchParams.get('limit')) || 90, 365)
+    const offset = Math.max(Number(request.nextUrl.searchParams.get('offset')) || 0, 0)
 
     const entries = await query(
       `SELECT id, weight_kg, body_fat_percent, date, notes, created_at
          FROM weight_entries
         WHERE user_id = $1
         ORDER BY date DESC
-        LIMIT $2`,
-      [user.id, limit]
+        LIMIT $2 OFFSET $3`,
+      [user.id, limit,offset]
     )
 
     return Response.json(entries)
