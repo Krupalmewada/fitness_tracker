@@ -63,6 +63,9 @@ export async function POST(request) {
     if (error.code === '23514') {
       return Response.json({ error: 'Invalid weight data.' }, { status: 400 })
     }
+    if (error.code === '22P02' || error.code === '22007' || error.code === '22008') {
+      return Response.json({ error: 'Invalid data format.' }, { status: 400 })
+    }
     console.error('Weight POST error:', error)
     return Response.json({ error: 'Internal server error.' }, { status: 500 })
   }
