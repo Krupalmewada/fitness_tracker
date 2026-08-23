@@ -1,23 +1,59 @@
 import bcrypt from 'bcrypt'
-import { query } from "../../../../lib/db"
-
+import { query } from '@/lib/db'
+import { createSession } from '@/lib/session'
+import { setSessionCookie } from '@/lib/auth'
+const DUMMY_HASH = '$2b$10$VW7k92vF7HS0E/XBt1PjCugLHTRi7CIxgzH0KjqUCeb3seEleBxYK'
 export async function POST(request) {
-  const { email, password } = await request.json()
-  
- // 1. Get user by email only
-const result = await query('SELECT * FROM users WHERE email = $1', [email])
-
-// 2. Check if user exists
-if(result.length === 0) return Response.json("email not exist", {status:401})
-
-// 3. Compare passwords in JavaScript
-const storedHash = result[0].password
-const isMatch = await bcrypt.compare(password, storedHash)
-
-// 4. If match, return user (without password)
-if(isMatch) {
-  const { id, email, created_at } = result[0]
-  return Response.json({ id, email, created_at })
-}
-else return Response.json("password doesn't match", {status:401})
+  try {
+    const { email, password } = await request.json()
+    // 1. Validate required fields
+    if (!email || !password) {
+      return Response.json(
+        { error: 'Email and password are required.' },
+        { status: 400 }
+      )
+    }
+    // 2. Normalise email
+    const normalizedEmail = email.trim().toLowerCase()
+    // 3. Get only the columns we need
+    const result = await query(
+      `SELECT id, email, username, password_hash
+       FROM users
+       WHERE email = $1`,
+      [normalizedEmail]
+    )
+    const user = result[0]
+    // 4. Always run bcrypt.compare
+    const hash = user?.password_hash ?? DUMMY_HASH
+    const isMatch = await bcrypt.compare(password, hash)
+    // 5. Generic error for both cases
+    if (!user || !isMatch) {
+      return Response.json(
+        { error: 'Invalid email or password.' },
+        { status: 401 }
+      )
+    }
+    // 6. Get user agent and IP
+    const userAgent = request.headers.get('user-agent')
+    const forwardedFor = request.headers.get('x-forwarded-for')
+    const ip = forwardedFor
+      ? forwardedFor.split(',')[0].trim()
+      : null
+    // 7. Create session token
+    const token = await createSession(user.id, userAgent, ip)
+    // 8. Set cookie
+    await setSessionCookie(token)
+    // 9. Never return password_hash
+    return Response.json({
+      id: user.id,
+      email: user.email,
+      username: user.username
+    })
+  } catch (error) {
+    console.error('Login error:', error)
+    return Response.json(
+      { error: 'Internal server error.' },
+      { status: 500 }
+    )
+  }
 }
